@@ -101,7 +101,7 @@ int UDP::getMinimalMTU()
 {
     ifreq ifr;
     int minimalMtu = INT32_MAX;
-    int i = 0;
+    int i = 1;
     while (true)
     {
         ifr.ifr_ifindex = i++;

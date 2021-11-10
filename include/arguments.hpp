@@ -11,4 +11,5 @@ struct CustomArgLine // Constructs argv-like array from a line string
     CustomArgLine(const CustomArgLine&) = delete;
 };
 
-cxxopts::ParseResult setupArguments(CustomArgLine&);
+cxxopts::Options setupArguments();
+cxxopts::ParseResult parseArguments(CustomArgLine&);

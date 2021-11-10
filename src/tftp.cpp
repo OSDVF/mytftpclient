@@ -3,6 +3,9 @@
 #include <sstream>
 #include <iomanip>
 
+void writeOptions(std::ostringstream &ss, int blockSize, int transferSize, int timeout);
+void writeOption(std::ostringstream &ss, int option, std::string name);
+
 std::string TFTP::blockNumberToStr(int blockNumber)
 {
     std::stringstream ss;
@@ -11,22 +14,44 @@ std::string TFTP::blockNumberToStr(int blockNumber)
     return s;
 }
 
-std::string TFTP::makeRRQ(std::string filename, std::string mode)
+void writeOption(std::ostringstream &ss, int option, std::string name)
+{
+    ss << '\0';
+    ss.write(name.c_str(), name.length() + 1);
+    auto stringValue = std::to_string(option);
+    ss << stringValue;
+}
+
+void writeOptions(std::ostringstream &ss, int blockSize, int transferSize, int timeout)
+{
+    writeOption(ss, blockSize, "blksize");
+    if (timeout != 0)
+    {
+        writeOption(ss, timeout, "timeout");
+    }
+    writeOption(ss, transferSize, "tsize");
+}
+
+std::string TFTP::makeRRQ(std::string filename, std::string mode, int blockSize, int timeout)
 {
     std::ostringstream ss;
     ss << '\000' << '\001';
-    ss.write(filename.c_str(), filename.length()+1);//Write also the null terminator
+    ss.write(filename.c_str(), filename.length() + 1); //Write also the null terminator
     ss << mode;
+
+    writeOptions(ss, blockSize, 0, timeout);
 
     return ss.str();
 }
 
-std::string TFTP::makeWRQ(std::string filename, std::string mode)
+std::string TFTP::makeWRQ(std::string filename, std::string mode, int blockSize, int transferSize, int timeout)
 {
     std::ostringstream ss;
     ss << '\000' << '\002';
-    ss.write(filename.c_str(), filename.length()+1);
+    ss.write(filename.c_str(), filename.length() + 1);
     ss << mode;
+
+    writeOptions(ss, blockSize, transferSize, timeout);
 
     return ss.str();
 }
@@ -48,6 +73,7 @@ std::string TFTP::makeACK(std::string block)
 {
     std::ostringstream ss;
     ss << '\000' << '\004';
-    ss.write(block.c_str() ,2);
-    return ss.str();
+    ss.write(block.c_str(), 2);
+    std::string str = ss.str();
+    return str;
 }

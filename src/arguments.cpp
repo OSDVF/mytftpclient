@@ -1,20 +1,25 @@
 #include "arguments.hpp"
 #include <iterator>
 
-cxxopts::ParseResult setupArguments(CustomArgLine& separated)
+cxxopts::Options setupArguments()
 {
     cxxopts::Options options("My TFTP Client", "Client for transferring files througn Trivial File Transfer Protocol");
         options.add_options("Required")
-            ("R,Read", "Read file from server. Do not combine with -W or")
-            ("W,Write", "Write file to server. Do not combine with -R or")
+            ("R,Read", "Read file from server. Do not combine with -W")
+            ("W,Write", "Write file to server. Do not combine with -R")
             ("d,file","File path", cxxopts::value<std::string>());
         options.add_options("Optional")
-            ("t,timeout", "Timeout in seconds")
+            ("t,timeout", "Timeout in seconds. 0 = no timeout", cxxopts::value<int>()->default_value("0"))
             ("s,size","Maximum block size. Default higher bound of block size is the smallest MTU", cxxopts::value<int>())
-            ("m,multicast","Request multicast transfer")
-            ("c,code","Transfer mode. Can be \"ascii\" (or also \"netascii\") or \"binary\" (or also \"octet\"). Binary is implicit", cxxopts::value<std::string>()->default_value("binary"))
-            ("a,address","Server address (implicit 127.0.0.1) and port (implicit 69) formatted: adress,port", cxxopts::value<std::string>()->default_value("127.0.0.1,69"));
+            ("m,multicast","Request multicast transfer. Not implemented yet.")
+            ("c,code","Transfer mode. Can be \"ascii\" (or also \"netascii\") or \"binary\" (or also \"octet\").", cxxopts::value<std::string>()->default_value("binary"))
+            ("a,address","Server address and port formatted: adress,port", cxxopts::value<std::string>()->default_value("127.0.0.1,69"));
+        return options;
+}
 
+cxxopts::ParseResult parseArguments(CustomArgLine& separated)
+{
+    auto options = setupArguments();
     return options.parse(separated.count, separated.separated);;
 }
 
