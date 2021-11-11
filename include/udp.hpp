@@ -33,10 +33,14 @@ public:
     UDP() {};
     ~UDP();
     int timeoutSeconds;
-    int send(const char *sentData, int length);
+    int send(const char *sentData, std::size_t length);
     int send(std::string s);
+    int sendWithTimeout(const char *sentData, std::size_t length, int timeout);
+    int sendWithTimeout(std::string s, int timeout);
+    void createTimeout(int timeout);
     int createSocket(std::string server, int port);
     int receive(char *buffer, int maxLength);
+    int receiveWithTimeout(char *buffer, int maxLength, int timeout);
     int checkTimeout(char *receiveBuffer, int maxLength);
     int getMinimalMTU();
     int close();

@@ -13,9 +13,9 @@
 
 int UDP::send(std::string s)
 {
-    return send(s.c_str(), (int)(s.length() + 1)); //also send the null terminator
+    return send(s.c_str(), (s.length() + 1)); //also send the null terminator
 }
-int UDP::send(const char *sentData, int length)
+int UDP::send(const char *sentData, std::size_t length)
 {
     int sentBytes;
     if ((sentBytes = sendto(sockFd, sentData, length, 0, endpoint->ai_addr, endpoint->ai_addrlen)) == -1)
@@ -26,6 +26,16 @@ int UDP::send(const char *sentData, int length)
     return sentBytes;
 }
 
+int UDP::sendWithTimeout(const char *sentData, std::size_t length, int timeout)
+{
+    createTimeout(timeout);
+    return send(sentData, length);
+}
+int UDP::sendWithTimeout(std::string s, int timeout)
+{
+    return sendWithTimeout(s.c_str(), (s.length() + 1), timeout); //also send the null terminator
+}
+
 int UDP::receive(char *buffer, int maxLength)
 {
     int receivedBytes;
@@ -34,6 +44,38 @@ int UDP::receive(char *buffer, int maxLength)
         throw UDPException(errno, "encountered while receiving from server.");
     }
     return receivedBytes;
+}
+
+void UDP::createTimeout(int timeout)
+{
+    fd_set fds;
+    int n;
+    struct timeval tv;
+
+    // set up the file descriptor set
+    FD_ZERO(&fds);
+    FD_SET(sockFd, &fds);
+
+    // set up the struct timeval for the timeout
+    tv.tv_sec = timeout;
+    tv.tv_usec = 0;
+
+    // wait until timeout or data received
+    n = select(sockFd + 1, &fds, NULL, NULL, &tv);
+    if (n == 0)
+    {
+        throw UDPException(0, "Timeout!");
+    }
+    else if (n == -1)
+    {
+        throw UDPException(errno, "encountered while construcing timeout.");
+    }
+}
+
+int UDP::receiveWithTimeout(char *buffer, int maxLength, int timeout)
+{
+    createTimeout(timeout);
+    return receive(buffer, maxLength);
 }
 
 int UDP::createSocket(std::string server, int port)
@@ -55,9 +97,13 @@ int UDP::createSocket(std::string server, int port)
     {
         if ((sockFd = socket(endpoint->ai_family, endpoint->ai_socktype, endpoint->ai_protocol)) == -1)
         {
-            throw UDPException(errno, " encountered while creating socket");
+            continue;
         }
         break;
+    }
+    if (sockFd == -1)
+    {
+        throw UDPException(errno, " encountered while creating socket");
     }
     if (endpoint == NULL)
     {
@@ -114,7 +160,7 @@ int UDP::getMinimalMTU()
     }
 }
 
-const auto& closeFd = close;//Rename the function
+const auto &closeFd = close; //Rename the function
 int UDP::close()
 {
     opened = false;
@@ -122,13 +168,17 @@ int UDP::close()
 }
 UDP::~UDP()
 {
-    if(opened)
+    if (opened)
         close();
 }
 UDPException::UDPException(int whichErrno, std::string additionalMessage)
 {
-    std::ostringstream msgBuilder("Network Error: ");
-    msgBuilder << std::string(strerror(whichErrno)) << " ";
+    std::ostringstream msgBuilder;
+    msgBuilder << "Network Error: ";
+    if(whichErrno != 0)
+    {
+        msgBuilder << std::string(strerror(whichErrno)) << " ";
+    }
     msgBuilder << additionalMessage;
     this->message = msgBuilder.str();
     this->whichErrno = whichErrno;

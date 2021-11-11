@@ -17,7 +17,7 @@ void printTimestamp();
 void printError(std::string error);
 long GetFileSize(std::string filename);
 std::string base_name(std::string const &path);
-bool checkOACKs(char *buffer, UDP &connection, int timeoutOffer, int &timeout, int blocksizeOffer, int &blocksize, long unsigned int &transferSize, bool read);
+bool checkOACKs(char *buffer, int recvBytesCount, UDP &connection, int timeoutOffer, int &timeout, int blocksizeOffer, int &blocksize, long unsigned int &transferSize, bool read);
 unsigned int stdStr2intHash(std::string str, int h = 0);
 constexpr unsigned int str2intHash(const char *str, int h = 0)
 {
@@ -67,7 +67,8 @@ int main()
             auto argumentsResult = parseArguments(separated);
 
             UDP connection;
-            TFTP tftp;
+            int timeout = 0;
+            TFTP tftp(timeout);
             ServerConfig serverConfig = parseServerConfig(argumentsResult["a"].as<std::string>());
             std::string mode = argumentsResult["c"].as<std::string>();
             std::vector<std::string> permittedModes = {"ascii", "octet", "netascii", "binary"};
@@ -87,7 +88,6 @@ int main()
             int blocksize = DEFAULT_BLOCK_SIZE;
             long unsigned int transferSize = 0;
             int timeoutOffer = argumentsResult["t"].as<int>();
-            int timeout = 0;
             if (argumentsResult.count("s") == 1)
             {
                 blockSizeOffer = std::min(argumentsResult["s"].as<int>(), minimalMTU);
@@ -113,8 +113,7 @@ int main()
 
                 printTimestamp();
                 std::cout << "Sending read file request with " << mode << " mode" << std::endl;
-                std::string rrq = tftp.makeRRQ(filePath, mode, blockSizeOffer, timeoutOffer);
-                connection.send(rrq);
+                tftp.sendRRQ(connection, filePath, mode, blockSizeOffer, timeoutOffer);
 
                 char *buffer = new char[std::max(blockSizeOffer, blocksize) + 4]; //+4 because 2 bytes for opcode and 2 bytes for the block number
                 int recvBytesCount = 0;
@@ -127,11 +126,12 @@ int main()
                 do
                 {
                     gotOACK = false;
-                    recvBytesCount = connection.receive(buffer, blocksize + 4);
+                    //Receive, apply timeout, and transfer mode
+                    int fileBytesCount = tftp.receive(connection, buffer, blocksize + 4, recvBytesCount);
 
                     // Receive option acknowledgements (OACKs)
                     // This function also updates corresponding option values
-                    if (checkOACKs(buffer, connection, timeoutOffer, timeout, blockSizeOffer, blocksize, transferSize, true))
+                    if (checkOACKs(buffer, recvBytesCount, connection, timeoutOffer, timeout, blockSizeOffer, blocksize, transferSize, true))
                     {
                         //If received an OACK, server accepted the offer
                         //Continue with receiving
@@ -171,7 +171,7 @@ int main()
                     if (blockNumber == lastBlockNumber + 1) //Block numbers should increase with 1
                     {
                         // WRITE to the file
-                        file.write(buffer + 4, recvBytesCount - 4); //Because the first 4 bytes are the block number
+                        file.write(buffer + 4, fileBytesCount); //Because the first 4 bytes are the block number
 
                         // Send acknowledgment packet
                         std::string ackMessage = tftp.makeACK({buffer[2], buffer[3]});
@@ -254,7 +254,7 @@ unsigned int stdStr2intHash(std::string str, int h)
     return !str.c_str()[h] ? 5381 : (str2intHash(str.c_str(), h + 1) * 33) ^ str.c_str()[h];
 }
 
-bool checkOACKs(char *buffer, UDP &connection, int timeoutOffer, int &timeout, int blocksizeOffer, int &blocksize, long unsigned int &transferSize, bool read)
+bool checkOACKs(char *buffer, int recvBytesCount, UDP &connection, int timeoutOffer, int &timeout, int blocksizeOffer, int &blocksize, long unsigned int &transferSize, bool read)
 {
     if (buffer[0] == 0 && buffer[1] == 6) // 06 = OACK
     {
@@ -311,10 +311,13 @@ bool checkOACKs(char *buffer, UDP &connection, int timeoutOffer, int &timeout, i
                 }
                 else
                 {
-                    checkOptionError(transferSize, optionValueString, optionName);
+                    if(!checkOptionError(transferSize, optionValueString, optionName))
+                    {
+                        throw SkipToNextUserInput();//Server will not accept the file of this size
+                    }
                 }
                 printTimestamp();
-                std::cout << "Transfer size accepted: " << transferSize << std::endl;
+                std::cout << "Transfered file size will be: " << transferSize << std::endl;
                 break;
             case str2intHash("\n\b"):
                 printTimestamp();
@@ -329,7 +332,7 @@ bool checkOACKs(char *buffer, UDP &connection, int timeoutOffer, int &timeout, i
             }
             //Advance to next option
             bufferPos = nextOptionStartIndex;
-        } while (buffer[nextOptionStartIndex] != 0);
+        } while (nextOptionStartIndex < recvBytesCount);
         return true;
     }
     return false;
